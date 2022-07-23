@@ -1,5 +1,5 @@
 
-import sys, os, importlib, inspect, time
+import sys, os, importlib, inspect
 
 import argparse
 
@@ -10,12 +10,12 @@ import pygame
 dir = 'programs'
 
 def main(argc, argv) -> int:
-    parser = argparse.ArgumentParser(description='Graphical python programs.', prog='pygraphics.py')
+    parser = argparse.ArgumentParser(description='Graphical python programs.', prog='run.py')
     parser.add_argument('-p', '--program', help='The program to run.', required=True, type=str)
     parser.add_argument('-t', '--title', help='The title of the window.', type=str, default='window', required=False)
     parser.add_argument('-w', '--width', help='The width of the window.', type=int, default=800)
     parser.add_argument('-l', '--height', help='The height of the window.', type=int, default=600)
-    parser.add_argument('-o', '--options', help='The option to pass to the program.', type=str, nargs='+')
+    parser.add_argument('-o', '--options', help='List of options to pass to the program.', type=str, metavar='opt=val', nargs='+')
 
     args = parser.parse_args(argv[1:])
 
@@ -38,6 +38,8 @@ def main(argc, argv) -> int:
         print(f'Program not found: {program}.')
         return 1
 
+    print(f'Running {program}...')
+
     screen = create_window(window_title, window_width, window_height)
     background = pygame.Surface(screen.get_size())
     background = background.convert()
@@ -46,24 +48,41 @@ def main(argc, argv) -> int:
     screen.blit(background, (0, 0))
     pygame.display.flip()
 
-    prog_obj = program_class(program_options)
+    prog_obj = program_class(window_width, window_height, program_options)
     running = True
 
+    prog_obj._start()
+
+    # Main event loop
     while(running):
         try:
+
+            # pygame events
             for event in pygame.event.get():
                 if event.type == pygame.QUIT:
+                    print(f'Quitting program: {program}')
                     running = False
-            
-            screen.blit(background, (0, 0))
+                    break
 
-            prog_obj.update()
-            prog_obj.draw(screen)
+            # Update
+            update_ok = prog_obj._update()
+            if update_ok is not None and not update_ok:
+                print(f'Update failed, exiting.')
+                running = False
+                break
 
+            # Draw
+            draw_ok = prog_obj._draw(screen)
+            if draw_ok is not None and not draw_ok:
+                print(f'Draw failed, exiting.')
+                running = False
+                break
+
+            # Buffer swap
             pygame.display.flip()
 
         except KeyboardInterrupt:
-            print('Keyboard interrupt, exiting.')
+            print('Keyboard interrupt received from commandline, exiting.')
             running = False
             return 1
         except Exception as e:
@@ -71,6 +90,8 @@ def main(argc, argv) -> int:
             running = False
             return 1
 
+
+# Look for a program in the specified programs directory
 def check_for_program(program: str) -> bool:
     program_file = os.path.join(dir, program + '.py')
     program_module_path = os.path.dirname(program_file) + '.' + program
@@ -80,7 +101,7 @@ def check_for_program(program: str) -> bool:
     try:
         mod = importlib.import_module(program_module_path)
         class_members = inspect.getmembers(mod, inspect.isclass)
-        for class_name, class_obj in class_members:
+        for _, class_obj in class_members:
             if issubclass(class_obj, Program):
                 return class_obj
 
@@ -92,7 +113,9 @@ def check_for_program(program: str) -> bool:
         
         return False
 
-def create_window(title: str, width: int, height: int) -> None:
+
+# Create the pygame window and return the screen surface
+def create_window(title: str, width: int, height: int) -> pygame.Surface:
     pygame.init()
 
     screen = pygame.display.set_mode((width, height))
