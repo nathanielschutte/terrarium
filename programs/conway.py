@@ -1,7 +1,7 @@
 
 import pygame
 
-import json
+import json, math, random
 
 from .src import program
 
@@ -13,17 +13,21 @@ class ConwayProgram(program.Program):
     EXPORT_MODE = 'positives'
 
     # Seconds between game rule updates
-    DEFAULT_STEP = 1
+    DEFAULT_STEP = 0.5
 
     # Total cell dimension
     GRID_SIZE = 100
 
     # Pixel width of a cell
-    GRID_SCALE = 10
+    GRID_SCALE = 20
 
     # Game states
     STATE_RUN = 'run'
     STATE_HOLD = 'hold'
+
+    COLOR_GRIDLINES = (100, 100, 100)
+    COLOR_EMPTY = (50, 50, 80)
+    COLOR_FILL = (200, 200, 200)
 
     # Conway's Game of Life rules
     # Neighbor counts that will trigger a switch
@@ -50,9 +54,12 @@ class ConwayProgram(program.Program):
         self.xpan = 0
         self.ypan = 0
 
-        self.grid = [[0 for _ in range(self.size)] for _ in range(self.size)]
-    
+        self.grid = [[1 if random.randint(0, 10) == 0 else 0 for _ in range(self.size)] for _ in range(self.size)]
+        self.grid_swap = self.grid.copy()
+
         self.debug(f'Grid size: {len(self.grid)}x{len(self.grid[0])}')
+
+        self.set_background(ConwayProgram.COLOR_EMPTY)
 
         # Load grid from file
         if self._get_opt('file', str, default=None) is not None:
@@ -90,13 +97,53 @@ class ConwayProgram(program.Program):
 
     def get_grid_surface(self, screen) -> pygame.Surface:
         surface = pygame.Surface((screen.get_width(), screen.get_height()))
+        surface = surface.convert()
+        surface.fill(ConwayProgram.COLOR_EMPTY)
 
         # cell count to render horizontally
-        cell_render_width = screen.get_width() / self.scale
+        cell_render_width = math.floor(screen.get_width() / self.scale)
 
         # cell count to render vertically
-        cell_render_height = screen.get_height() / self.scale
+        cell_render_height = math.floor(screen.get_height() / self.scale)
 
+        # cell cutoff
+        cell_x_first = math.floor(self.xpan / self.scale)
+        cell_y_first = math.floor(self.ypan / self.scale)
+
+        # camera offset
+        screen_offset_x = self.xpan % self.scale
+        screen_offset_y = self.ypan % self.scale
+
+        # gridlines
+        for x in range(cell_render_width):
+            pygame.draw.line(
+                surface, 
+                ConwayProgram.COLOR_GRIDLINES,
+                (x * self.scale, 0),
+                (x * self.scale, self.height)
+            )
+        for y in range(cell_render_height):
+            pygame.draw.line(
+                surface, 
+                ConwayProgram.COLOR_GRIDLINES,
+                (0, y * self.scale),
+                (self.width, y * self.scale)
+            )
+        
+        # cells
+        for x, col in enumerate(self.grid[cell_x_first:cell_x_first+cell_render_width]):
+            for y, cell in enumerate(col[cell_y_first:cell_y_first+cell_render_height]):
+                if cell == 0:
+                    continue
+
+                cell_rect = pygame.Rect(
+                    x * self.scale + screen_offset_x,
+                    y * self.scale + screen_offset_y,
+                    self.scale,
+                    self.scale
+                )
+
+                pygame.draw.rect(surface, ConwayProgram.COLOR_FILL, cell_rect)
 
 
         return surface
@@ -113,8 +160,8 @@ class ConwayProgram(program.Program):
         
         # Count cell neighboors
         n = 0
-        for i in range(-1, 2, 1):
-            for j in range(-1, 2, 1):
+        for i in range(-1, 2):
+            for j in range(-1, 2):
                 if i == 0 and j == 0:
                     continue
                 n += self.get_cell(x + i, y + j)
@@ -122,11 +169,11 @@ class ConwayProgram(program.Program):
         # Switch cell state based on rules
         if self.grid[x][y] == 1:
             if n in ConwayProgram.GAME_RULES['on']:
-                self.grid[x][y] = 0
-                return 1
+                self.grid_swap[x][y] = 0
+                return 2
         else:
             if n in ConwayProgram.GAME_RULES['off']:
-                self.grid[x][y] = 1
+                self.grid_swap[x][y] = 1
                 return 1
 
         # No update
@@ -147,12 +194,24 @@ class ConwayProgram(program.Program):
         if self.check_interval('step'):
 
             # Update all cells and count how many were switched
-            updates = 0
+            inc = dec = 0
             for x in range(self.size):
                 for y in range(self.size):
-                    updates += self.update_cell(x, y)
+                    rc = self.update_cell(x, y)
+                    if rc == 2:
+                        dec += 1
+                    elif rc == 1:
+                        inc += 1
 
-            self.debug(f'[{self.get_interval_count("step")}] cells updated: {updates}')
+            # Swap grid
+            self.grid = self.grid_swap.copy()
+
+            ratio = 100
+
+            if dec > 0:
+                ratio = inc / dec
+
+            self.debug(f'[{self.get_interval_count("step")}] cells born: {inc}, died: {dec}, %{ratio:.2f}')
 
         # Success
         return True

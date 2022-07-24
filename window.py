@@ -51,6 +51,10 @@ def main(argc, argv) -> int:
     prog_obj = program_class(window_width, window_height, program_options)
     running = True
 
+    # Set the program files path using program name
+    prog_obj._set_file_path(program)
+    
+    # Program startup
     prog_obj._start()
 
     # Main event loop
@@ -60,7 +64,7 @@ def main(argc, argv) -> int:
             # pygame events
             for event in pygame.event.get():
                 if event.type == pygame.QUIT:
-                    print(f'Quitting program: {program}')
+                    print(f'Exiting program: {program}')
                     running = False
                     break
 
@@ -85,10 +89,10 @@ def main(argc, argv) -> int:
             print('Keyboard interrupt received from commandline, exiting.')
             running = False
             return 1
-        except Exception as e:
-            print(f'Encountered an uncaught {type(e).__name__}: {e}.')
-            running = False
-            return 1
+        # except Exception as e:
+        #     print(f'Encountered an uncaught {type(e).__name__}: {e}.')
+        #     running = False
+        #     return 1
 
 
 # Look for a program in the specified programs directory
